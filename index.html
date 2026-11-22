@@ -29,6 +29,9 @@ button:disabled{opacity:.4;cursor:default}
 .ask input{flex:1}
 .or{text-align:center;color:#a9b4d0;font-size:13px;margin:14px 0 0}
 .codeInline{color:#e8a317;letter-spacing:4px}
+.modes{display:flex;gap:8px;flex-wrap:wrap}
+.modes button{flex:1;min-width:140px;background:#16213e;border:2px solid #34456f}
+.modes button.sel{border-color:#e8a317;background:#2a3a66}
 .bar{position:sticky;top:0;z-index:5;background:#16213e;padding:8px 0 10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .bar button{padding:10px 12px;font-size:14px}
 .secret{flex:1;min-width:150px;background:#0f1730;border:2px dashed #e8a317;border-radius:12px;padding:10px;text-align:center;font-weight:700;user-select:none;-webkit-user-select:none;touch-action:none}
@@ -45,6 +48,10 @@ button:disabled{opacity:.4;cursor:default}
 .players .score{background:#2a3a66;border-radius:999px;padding:1px 8px;font-weight:700}
 .players .tag{color:#a9b4d0;font-size:12px}
 .lobbyList li{font-size:17px;padding:10px 16px}
+.targets{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:10px}
+.targets span{color:#a9b4d0;font-size:13px}
+.targets button{padding:8px 12px;font-size:14px;background:#16213e;border:2px solid #34456f;border-radius:999px}
+.targets button.sel{border-color:#e8a317;background:#2a3a66}
 .log{list-style:none;margin:12px 0 0;padding:0;display:flex;flex-direction:column;gap:6px}
 .log li{background:#0f1730;border-radius:10px;padding:8px 10px;font-size:14px;word-break:break-word}
 .log li.sys{background:none;color:#a9b4d0;font-size:13px;padding:2px 10px}
@@ -100,6 +107,11 @@ button:disabled{opacity:.4;cursor:default}
   <p class="sub">Share the code or link. Everyone joins with their name.</p>
   <div class="row"><button id="shareBtn" class="gold">Share invite link</button></div>
   <div class="panel"><h2>Players</h2><ul class="players lobbyList" id="lobbyPlayers"></ul></div>
+  <div class="panel">
+    <h2>Game type</h2>
+    <div class="modes"><button id="modeClassic">Classic</button><button id="modeOne">One answerer</button></div>
+    <p class="sub" id="modeDesc" style="margin:10px 0 0"></p>
+  </div>
   <div class="row"><button id="startOnline" class="gold">Start game</button></div>
   <p class="tip" id="lobbyTip"></p>
   <div class="row"><button id="leaveLobby" class="alt">Leave</button></div>
@@ -127,6 +139,7 @@ button:disabled{opacity:.4;cursor:default}
       <p class="sub" id="roundDetail"></p>
       <div class="row"><button id="nextRound" class="gold">Next round</button></div>
     </div>
+    <div class="targets" id="targets" style="display:none"></div>
     <form class="ask" id="askForm"><input id="askInput" placeholder="Ask a yes/no question…" maxlength="140" autocomplete="off"><button id="askBtn">Ask</button></form>
   </div>
 
@@ -200,7 +213,7 @@ button:disabled{opacity:.4;cursor:default}
 
   function render(){
     var g=$('grid');g.innerHTML='';
-    var mineIdx=(mode==='online'&&G&&G.itId===net.id)?mySecret:null;
+    var mineIdx=(mode==='online'&&G&&G.mode==='one'&&G.itId===net.id)?mySecret:null;
     names.forEach(function(n,i){
       var h=hue(n);
       var d=document.createElement('div');
@@ -208,7 +221,7 @@ button:disabled{opacity:.4;cursor:default}
       d.innerHTML='<div class="in"><div class="face front" style="background:linear-gradient(160deg,hsl('+h+',65%,55%),hsl('+((h+40)%360)+',65%,38%))"><div class="init">'+esc(n.charAt(0).toUpperCase())+'</div><div class="nm">'+esc(n)+'</div></div><div class="face back">✕</div></div>';
       d.onclick=function(){
         down[i]=!down[i];d.classList.toggle('down',!!down[i]);
-        if(mode==='online')act({t:'down',n:downCount()});
+        if(mode==='online'&&G&&G.mode==='one')act({t:'down',n:downCount()});
       };
       g.appendChild(d);
     });
@@ -239,12 +252,15 @@ button:disabled{opacity:.4;cursor:default}
     if(mode==='online'){if(confirm('Leave this game?'))leaveRoom();return}
     screen('setup');
   };
-  $('resetBtn').onclick=function(){down={};render();if(mode==='online')act({t:'down',n:0})};
+  $('resetBtn').onclick=function(){
+    for(var k in down)delete down[k];
+    render();if(mode==='online'&&G&&G.mode==='one')act({t:'down',n:0});
+  };
 
   function setSecret(i){
     $('pickModal').classList.remove('on');
     if(mode==='online'){
-      if(!G||G.itId!==net.id||G.phase!=='picking')return;
+      if(!G||!hasSecretRole()||G.phase!=='picking')return;
       mySecret=i;ssSet(secretKey(),String(i));render();renderOnline();return;
     }
     secret=i;$('secretTxt').textContent='••••••';
@@ -254,7 +270,7 @@ button:disabled{opacity:.4;cursor:default}
   $('randBtn').onclick=function(){setSecret(Math.floor(Math.random()*names.length))};
   var sec=$('secret');
   function peek(on){
-    var s=mode==='online'?(G&&G.itId===net.id?mySecret:null):secret;
+    var s=mode==='online'?(G&&hasSecretRole()?mySecret:null):secret;
     if(s===null||s===undefined)return;
     $('secretTxt').textContent=on?names[s]:'••••••';
   }
@@ -265,10 +281,15 @@ button:disabled{opacity:.4;cursor:default}
   function step(n){['guessStep1','guessStep2','guessStep3'].forEach(function(id,i){$(id).style.display=(i===n-1)?'block':'none'})}
   $('guessBtn').onclick=function(){
     fillList($('guessList'),function(i){
-      if(mode==='online'){$('guessModal').classList.remove('on');if(myTurn())act({t:'guess',i:i});return}
+      if(mode==='online'){
+        $('guessModal').classList.remove('on');
+        if(myTurn())act(G.mode==='classic'?{t:'guess',i:i,to:target}:{t:'guess',i:i});
+        return;
+      }
       chosen=i;$('guessName').textContent=names[i];step(2);
     });
-    $('guessTitle').textContent='Who is it?';step(1);$('guessModal').classList.add('on');
+    $('guessTitle').textContent=(mode==='online'&&G&&G.mode==='classic')?'Who is '+pname(target)+"'s person?":'Who is it?';
+    step(1);$('guessModal').classList.add('on');
   };
   $('guessClose').onclick=function(){$('guessModal').classList.remove('on')};
   $('guessBack').onclick=function(){step(1)};
@@ -283,6 +304,7 @@ button:disabled{opacity:.4;cursor:default}
   var BROKERS=['wss://broker.emqx.io:8084/mqtt','wss://test.mosquitto.org:8081','wss://broker.hivemq.com:8884/mqtt'];
   var net={client:null,key:null,topic:'',code:'',broker:0,id:'',name:'',seen:{},joined:false};
   var G=null, mySecret=null, shownRound=-1, answered={}, pickPrompted=-1;
+  var target=null, boards={};
   var enc=new TextEncoder(), dec=new TextDecoder();
 
   function netStatus(t){$('netStatus').textContent=t||''}
@@ -359,8 +381,8 @@ button:disabled{opacity:.4;cursor:default}
     }).then(function(ok){
       busy(false);
       if(!ok){netStatus('Could not reach the game server. Check your connection and try again.');return}
-      G={v:1,hostId:net.id,phase:'lobby',round:0,names:cards,players:[{id:net.id,name:nm,score:0,on:true,down:0}],
-         itId:null,order:[],turn:0,out:{},pendingQ:null,pendingGuess:null,log:[],result:null};
+      G={v:1,hostId:net.id,mode:'classic',phase:'lobby',round:0,names:cards,players:[{id:net.id,name:nm,score:0,on:true,down:0}],
+         itId:null,order:[],turn:0,out:{},ready:{},revealed:{},pendingQ:null,pendingGuess:null,log:[],result:null};
       net.joined=true;publishState();enterRoom();
     });
   }
@@ -385,7 +407,7 @@ button:disabled{opacity:.4;cursor:default}
     });
   }
   function setupRoom(code,nm){
-    closeNet();G=null;mySecret=null;shownRound=-1;answered={};pickPrompted=-1;net.seen={};
+    closeNet();G=null;mySecret=null;shownRound=-1;answered={};pickPrompted=-1;net.seen={};target=null;boards={};
     net.code=code;net.name=nm;
     net.id=ssGet('gw_id_'+code)||rid();ssSet('gw_id_'+code,net.id);
     return deriveRoom(code).then(function(r){net.key=r.key;net.topic=r.topic});
@@ -440,8 +462,19 @@ button:disabled{opacity:.4;cursor:default}
   function online(){return G.players.filter(function(p){return p.on})}
   function secretKey(){return 'gw_secret_'+net.code+'_'+(G?G.round:0)}
   function curTurn(){return G.order[G.turn]}
+  function inRound(id){return G.order.indexOf(id)>=0||G.itId===id}
+  function alive(id){var p=findP(id);return !!p&&p.on&&G.order.indexOf(id)>=0&&!G.out[id]}
+  function aliveIds(){return G.order.filter(alive)}
+  function opponents(){return aliveIds().filter(function(id){return id!==net.id})}
+  // who keeps a secret person this round
+  function hasSecretRole(){
+    if(!G)return false;
+    return G.mode==='classic'?G.order.indexOf(net.id)>=0:G.itId===net.id;
+  }
   function myTurn(){
-    return mode==='online'&&!!G&&G.phase==='playing'&&curTurn()===net.id&&!G.pendingQ&&!G.pendingGuess&&!G.out[net.id];
+    if(mode!=='online'||!G||G.phase!=='playing'||curTurn()!==net.id||G.pendingQ||G.pendingGuess||G.out[net.id])return false;
+    if(G.mode==='classic')return !!target&&alive(target)&&target!==net.id;
+    return true;
   }
 
   function act(m){
@@ -472,20 +505,29 @@ button:disabled{opacity:.4;cursor:default}
   }
 
   // ----- game rules (run only by the host) -----
+  // Classic: everyone has a secret; on your turn ask one player a question or guess their person.
+  //          A correct guess knocks that player out, a wrong guess knocks you out. Last one standing wins.
+  // One answerer: one player has a secret each round and everyone else races to guess it.
   function sys(t){G.log.push({sys:t})}
   function newRound(){
     var on=online();
     if(on.length<2){G.phase='lobby';return}
     var ids=on.map(function(p){return p.id});
-    var prev=ids.indexOf(G.itId);
-    var it=ids[(prev+1)%ids.length];
-    G.round++;G.itId=it;
-    var k=ids.indexOf(it);
-    G.order=ids.slice(k+1).concat(ids.slice(0,k));
-    G.turn=0;G.out={};G.pendingQ=null;G.pendingGuess=null;G.result=null;G.log=[];
+    G.round++;G.turn=0;G.out={};G.ready={};G.revealed={};G.pendingQ=null;G.pendingGuess=null;G.result=null;G.log=[];
     G.players.forEach(function(p){p.down=0});
     G.phase='picking';
-    sys('Round '+G.round+': '+pname(it)+' is answering.');
+    if(G.mode==='classic'){
+      var s=(G.round-1)%ids.length;
+      G.order=ids.slice(s).concat(ids.slice(0,s));G.itId=null;
+      sys('Round '+G.round+': everyone picks a secret person. '+pname(G.order[0])+' goes first.');
+    }else{
+      var prev=ids.indexOf(G.itId);
+      var it=ids[(prev+1)%ids.length];
+      G.itId=it;
+      var k=ids.indexOf(it);
+      G.order=ids.slice(k+1).concat(ids.slice(0,k));
+      sys('Round '+G.round+': '+pname(it)+' is answering.');
+    }
   }
   function endRound(winner,note,secretIdx){
     if(winner){var w=findP(winner);if(w)w.score++}
@@ -494,15 +536,24 @@ button:disabled{opacity:.4;cursor:default}
   }
   function activeGuessers(){return G.order.filter(function(id){var p=findP(id);return p&&p.on&&!G.out[id]})}
   function advance(){
-    if(!activeGuessers().length){endRound(G.itId,'Nobody guessed '+pname(G.itId)+"'s person.");return}
+    if(G.mode==='classic'){
+      var al=aliveIds();
+      if(al.length<2){endRound(al[0]||null,al[0]?pname(al[0])+' is the last one standing.':'Nobody is left.');return}
+    }else if(!activeGuessers().length){endRound(G.itId,'Nobody guessed '+pname(G.itId)+"'s person.");return}
     var n=G.order.length;
     for(var s=1;s<=n;s++){
       var j=(G.turn+s)%n,id=G.order[j],p=findP(id);
       if(p&&p.on&&!G.out[id]){G.turn=j;return}
     }
   }
+  function allReady(){return G.order.every(function(id){var p=findP(id);return !p||!p.on||G.ready[id]})}
+  function startPlaying(){
+    G.phase='playing';G.turn=0;
+    var fp=findP(G.order[0]);
+    if(!fp||!fp.on||G.out[G.order[0]]){G.turn=G.order.length-1;advance()}
+  }
   function handle(m){
-    var p=findP(m.from),from=m.from,ok=true;
+    var p=findP(m.from),from=m.from,ok=true,classic=G.mode==='classic';
     switch(m.t){
       case 'join':
         var nm=String(m.name||'Player').slice(0,20);
@@ -518,44 +569,76 @@ button:disabled{opacity:.4;cursor:default}
         p.on=false;sys(p.name+' left.');
         if(G.phase==='picking'||G.phase==='playing'){
           if(online().length<2){endRound(null,'Not enough players left.');break}
+          var pq=G.pendingQ,pgs=G.pendingGuess;
+          if(pq&&(pq.from===from||pq.to===from))G.pendingQ=null;
+          if(pgs&&(pgs.from===from||pgs.to===from))G.pendingGuess=null;
+          if(classic){
+            if(G.order.indexOf(from)>=0)G.out[from]=true;
+            if(aliveIds().length<2){advance();break}
+            if(G.phase==='picking'){if(allReady())startPlaying();break}
+            if(curTurn()===from)advance();
+            break;
+          }
           if(from===G.itId){endRound(null,p.name+' left, so this round is cancelled.');break}
-          if(G.pendingQ&&G.pendingQ.from===from)G.pendingQ=null;
-          if(G.pendingGuess&&G.pendingGuess.from===from)G.pendingGuess=null;
           if(G.phase==='playing'&&curTurn()===from)advance();
           else if(G.phase==='playing'&&!activeGuessers().length)advance();
         }
         break;
+      case 'mode':
+        if(from!==G.hostId||G.phase!=='lobby'||(m.m!=='classic'&&m.m!=='one')){ok=false;break}
+        G.mode=m.m;break;
       case 'start':
         if(from!==G.hostId||G.phase!=='lobby'||online().length<2){ok=false;break}
-        G.itId=null;newRound();break;
+        G.itId=null;G.round=0;newRound();break;
       case 'next':
         if(from!==G.hostId||G.phase!=='roundover'){ok=false;break}
         newRound();break;
       case 'picked':
-        if(G.phase!=='picking'||from!==G.itId){ok=false;break}
-        G.phase='playing';G.turn=0;
-        var first=G.order[0],fp=findP(first);
-        if(!fp||!fp.on){G.turn=G.order.length-1;advance()}
+        if(G.phase!=='picking'){ok=false;break}
+        if(classic){
+          if(G.order.indexOf(from)<0||G.ready[from]){ok=false;break}
+          G.ready[from]=true;
+          if(allReady())startPlaying();
+        }else{
+          if(from!==G.itId){ok=false;break}
+          startPlaying();
+        }
         break;
       case 'ask':
         if(G.phase!=='playing'||curTurn()!==from||G.pendingQ||G.pendingGuess){ok=false;break}
         var q=String(m.text||'').trim().slice(0,140);if(!q){ok=false;break}
-        G.pendingQ={from:from,text:q};G.log.push({from:from,q:q});
+        var to=classic?m.to:G.itId;
+        if(classic&&(!alive(to)||to===from)){ok=false;break}
+        G.pendingQ={from:from,to:to,text:q};G.log.push({from:from,to:classic?to:undefined,q:q});
         break;
       case 'answer':
-        if(G.phase!=='playing'||from!==G.itId||!G.pendingQ){ok=false;break}
+        if(G.phase!=='playing'||!G.pendingQ||from!==G.pendingQ.to){ok=false;break}
         for(var i=G.log.length-1;i>=0;i--){if(G.log[i].from===G.pendingQ.from&&G.log[i].a===undefined&&!G.log[i].sys){G.log[i].a=!!m.yes;break}}
         G.pendingQ=null;advance();
         break;
       case 'guess':
         if(G.phase!=='playing'||curTurn()!==from||G.pendingQ||G.pendingGuess){ok=false;break}
         var gi=m.i|0;if(gi<0||gi>=G.names.length){ok=false;break}
-        G.pendingGuess={from:from,i:gi,n:rid(6)};G.log.push({from:from,q:'Final guess: '+G.names[gi]+'?',guess:true});
+        var gto=classic?m.to:G.itId;
+        if(classic&&(!alive(gto)||gto===from)){ok=false;break}
+        G.pendingGuess={from:from,to:gto,i:gi,n:rid(6)};
+        G.log.push({from:from,to:classic?gto:undefined,q:'Final guess: '+G.names[gi]+'?',guess:true});
         break;
       case 'gres':
-        if(G.phase!=='playing'||from!==G.itId||!G.pendingGuess||m.n!==G.pendingGuess.n){ok=false;break}
+        if(G.phase!=='playing'||!G.pendingGuess||from!==G.pendingGuess.to||m.n!==G.pendingGuess.n){ok=false;break}
         var gp=G.pendingGuess;G.pendingGuess=null;
         for(var k=G.log.length-1;k>=0;k--){if(G.log[k].guess&&G.log[k].a===undefined){G.log[k].a=!!m.correct;break}}
+        if(classic){
+          if(m.correct){
+            G.out[gp.to]=true;if(typeof m.secret==='number')G.revealed[gp.to]=m.secret;
+            sys(pname(gp.from)+' guessed '+pname(gp.to)+"'s person. "+pname(gp.to)+' is out.');
+          }else{
+            G.out[gp.from]=true;
+            sys(pname(gp.from)+' guessed wrong and is out.');
+          }
+          advance();
+          break;
+        }
         if(m.correct){endRound(gp.from,pname(gp.from)+' guessed it.',m.secret)}
         else{
           G.out[gp.from]=true;sys(pname(gp.from)+' guessed wrong and is out this round.');
@@ -563,6 +646,11 @@ button:disabled{opacity:.4;cursor:default}
           else advance();
         }
         break;
+      case 'reveal':
+        if(!classic||G.order.indexOf(from)<0||G.revealed[from]!==undefined){ok=false;break}
+        if(!(G.out[from]||G.phase==='roundover')){ok=false;break}
+        var ri=m.i|0;if(ri<0||ri>=G.names.length){ok=false;break}
+        G.revealed[from]=ri;break;
       case 'down':
         if(!p){ok=false;break}
         p.down=Math.max(0,Math.min(G.names.length,m.n|0));break;
@@ -577,32 +665,43 @@ button:disabled{opacity:.4;cursor:default}
   // ----- online UI -----
   $('startOnline').onclick=function(){act({t:'start'})};
   $('nextRound').onclick=function(){act({t:'next'})};
+  $('modeClassic').onclick=function(){act({t:'mode',m:'classic'})};
+  $('modeOne').onclick=function(){act({t:'mode',m:'one'})};
   $('askForm').onsubmit=function(e){
     e.preventDefault();
     var q=$('askInput').value.trim();if(!q||!myTurn())return;
-    act({t:'ask',text:q});$('askInput').value='';
+    act(G.mode==='classic'?{t:'ask',text:q,to:target}:{t:'ask',text:q});$('askInput').value='';
   };
   $('yesBtn').onclick=function(){act({t:'answer',yes:true})};
   $('noBtn').onclick=function(){act({t:'answer',yes:false})};
 
+  function setTarget(id){
+    if(target===id)return;
+    target=id;
+    if(!boards[id])boards[id]={};
+    down=boards[id];render();renderOnline();
+  }
+
   function playerChips(el,lobbyView){
     el.innerHTML='';
+    var classic=G.mode==='classic';
     G.players.forEach(function(p){
       var li=document.createElement('li');
       var cls=[];
       if(!p.on)cls.push('off');
       if(!lobbyView&&G.phase==='playing'&&curTurn()===p.id&&!G.out[p.id])cls.push('turn');
-      if(!lobbyView&&G.itId===p.id&&G.phase!=='lobby')cls.push('it');
+      if(!lobbyView&&!classic&&G.itId===p.id&&G.phase!=='lobby')cls.push('it');
       li.className=cls.join(' ');
       var n=document.createElement('b');n.textContent=p.name+(p.id===net.id?' (you)':'');li.appendChild(n);
       var tags=[];
       if(p.id===G.hostId)tags.push('host');
       if(!p.on)tags.push('offline');
       if(!lobbyView&&G.phase!=='lobby'){
-        if(G.itId===p.id)tags.push('answering');
-        else if(G.order.indexOf(p.id)<0)tags.push('next round');
+        if(!inRound(p.id))tags.push('next round');
+        else if(!classic&&G.itId===p.id)tags.push('answering');
         else if(G.out[p.id])tags.push('out');
-        else if(G.phase==='playing'||G.phase==='picking')tags.push((G.names.length-(p.down||0))+' up');
+        else if(classic&&G.phase==='picking')tags.push(G.ready[p.id]?'ready':'picking…');
+        else if(!classic&&(G.phase==='playing'||G.phase==='picking'))tags.push((G.names.length-(p.down||0))+' up');
       }
       if(tags.length){var t=document.createElement('span');t.className='tag';t.textContent=tags.join(' · ');li.appendChild(t)}
       if(!lobbyView){var s=document.createElement('span');s.className='score';s.textContent=p.score;li.appendChild(s)}
@@ -612,6 +711,7 @@ button:disabled{opacity:.4;cursor:default}
 
   function renderOnline(){
     if(mode!=='online'||!G)return;
+    var classic=G.mode==='classic';
     if(G.phase==='lobby'){
       screen('lobby');
       $('lobbyCode').textContent=net.code;
@@ -619,61 +719,113 @@ button:disabled{opacity:.4;cursor:default}
       var n=online().length;
       show('startOnline',amHost());
       $('startOnline').disabled=n<2;
+      $('modeClassic').className=classic?'sel':'';$('modeOne').className=classic?'':'sel';
+      $('modeClassic').disabled=$('modeOne').disabled=!amHost();
+      $('modeDesc').textContent=classic
+        ?'Everyone picks a secret person. Take turns asking another player a yes/no question. Guess someone\'s person to knock them out, but a wrong guess knocks you out. Last one standing wins.'
+        :'Each round one player picks a secret person and answers. Everyone else takes turns asking. First correct guess wins the round.';
       $('lobbyTip').textContent=amHost()?(n<2?'Waiting for at least one more player…':n+' players ready. Start when everyone is in.'):'Waiting for '+pname(G.hostId)+' to start the game…';
       return;
     }
     screen('game');show('online',true);
     names=G.names;
-    var amIt=G.itId===net.id;
+    var amIt=!classic&&G.itId===net.id;
+    var mineRole=hasSecretRole();
     if(G.round!==shownRound){
-      shownRound=G.round;down={};answered={};
-      var saved=ssGet(secretKey());mySecret=(amIt&&saved!==null)?parseInt(saved,10):null;
+      shownRound=G.round;answered={};boards={};target=null;down={};
+      var saved=ssGet(secretKey());mySecret=(mineRole&&saved!==null)?parseInt(saved,10):null;
       render();window.scrollTo(0,0);
     }
-    var itName=pname(G.itId);
+    // classic: pick whose board you are looking at (and who you ask)
+    var opps=classic?opponents():[];
+    if(classic){
+      if(!target||opps.indexOf(target)<0){
+        if(opps.length){
+          var me=G.order.indexOf(net.id),pick=opps[0];
+          for(var s=1;s<=G.order.length&&me>=0;s++){var c=G.order[(me+s)%G.order.length];if(opps.indexOf(c)>=0){pick=c;break}}
+          target=null;setTarget(pick);return;
+        }
+        target=null;
+      }
+    }else{down=down||{}}
+    var itName=pname(G.itId),tName=pname(target);
     $('editBtn').textContent='Leave';
-    show('resetBtn',!amIt);
+    show('resetBtn',classic?!!target:!amIt);
     // secret box / role
-    if(amIt){
+    if(mineRole){
       $('secretLbl').textContent='Your person (hold to peek)';
       $('secretTxt').textContent=mySecret===null?'Not chosen':'••••••';
+    }else if(classic){
+      $('secretLbl').textContent='Watching this round';$('secretTxt').textContent='Joining next round';
     }else{
       $('secretLbl').textContent=G.order.indexOf(net.id)<0?'Watching this round':'You are guessing';
       $('secretTxt').textContent=itName+"'s person";
     }
-    show('pickBtn',amIt);$('pickBtn').disabled=!(G.phase==='picking'&&mySecret===null);
-    show('guessBtn',!amIt);
+    show('pickBtn',mineRole&&G.phase==='picking');$('pickBtn').disabled=mySecret!==null;
+    var canGuessRole=classic?alive(net.id):!amIt;
+    show('guessBtn',canGuessRole&&G.phase!=='roundover');
     var mine=myTurn();
     $('guessBtn').disabled=!mine;$('askInput').disabled=!mine;$('askBtn').disabled=!mine;
-    show('askForm',!amIt&&G.phase!=='roundover');
-    $('askInput').placeholder='Ask '+itName+' a yes/no question…';
-    $('gameTip').textContent=amIt?'You are answering this round. Your person is outlined in gold.':'Tap a name to flip it down. Everyone sees every question and answer.';
+    show('askForm',canGuessRole&&G.phase!=='roundover');
+    $('askInput').placeholder=classic?(target?'Ask '+tName+' a yes/no question…':'Ask a yes/no question…'):'Ask '+itName+' a yes/no question…';
+    $('gameTip').textContent=classic
+      ?(opps.length>1?'Each opponent has their own board. Switch boards above to flip cards and choose who to ask.':'Tap a name to flip it down.')
+      :(amIt?'You are answering this round. Your person is outlined in gold.':'Tap a name to flip it down. Everyone sees every question and answer.');
+
+    // board / target switcher (classic with 2+ opponents)
+    var tg=$('targets');
+    show('targets',classic&&opps.length>1&&G.phase!=='roundover');
+    if(classic&&opps.length>1){
+      tg.innerHTML='<span>Board:</span>';
+      opps.forEach(function(id){
+        var b=document.createElement('button');b.type='button';b.textContent=pname(id);
+        if(id===target)b.className='sel';
+        b.onclick=function(){setTarget(id)};tg.appendChild(b);
+      });
+    }
 
     // status line
     var st='',pg=G.pendingGuess,pq=G.pendingQ;
-    if(G.phase==='picking')st=amIt?'Pick your secret person.':'Waiting for '+itName+' to pick a person…';
-    else if(G.phase==='playing'){
-      if(pg)st=amIt?'Checking '+pname(pg.from)+"'s final guess…":(pg.from===net.id?'Checking your guess…':pname(pg.from)+' is making a final guess…');
-      else if(pq)st=amIt?'Answer '+pname(pq.from)+"'s question.":(pq.from===net.id?'Waiting for '+itName+' to answer…':pname(pq.from)+' asked '+itName+' a question…');
-      else if(mine)st='Your turn: ask '+itName+' a question or make a final guess.';
+    var answerer=pq&&pq.to===net.id;
+    if(G.phase==='picking'){
+      if(mineRole&&mySecret===null)st='Pick your secret person.';
+      else if(classic){
+        var waiting=G.order.filter(function(id){var p=findP(id);return p&&p.on&&!G.ready[id]}).map(pname);
+        st=waiting.length?'Waiting for '+waiting.join(', ')+' to pick…':'Starting…';
+      }else st='Waiting for '+itName+' to pick a person…';
+    }else if(G.phase==='playing'){
+      if(pg){
+        if(pg.to===net.id)st='Checking '+pname(pg.from)+"'s final guess…";
+        else if(pg.from===net.id)st='Checking your guess…';
+        else st=pname(pg.from)+' is making a final guess'+(classic?' about '+pname(pg.to)+"'s person…":'…');
+      }else if(pq){
+        if(answerer)st='Answer '+pname(pq.from)+"'s question.";
+        else if(pq.from===net.id)st='Waiting for '+pname(pq.to)+' to answer…';
+        else st=pname(pq.from)+' asked '+pname(pq.to)+' a question…';
+      }else if(mine)st=classic?'Your turn: ask '+tName+' a question or guess their person.':'Your turn: ask '+itName+' a question or make a final guess.';
+      else if(curTurn()===net.id&&classic)st='Your turn.';
       else st=(amIt?pname(curTurn())+' is asking…':pname(curTurn())+"'s turn…");
-      if(G.out[net.id])st="You're out this round. "+st;
+      if(G.out[net.id])st="You're out. "+st;
     }else if(G.phase==='roundover')st='Round over.';
     $('status').textContent=st;
-    $('status').className='status'+((mine||(amIt&&pq)||(amIt&&G.phase==='picking'&&mySecret===null))?' mine':'');
+    $('status').className='status'+((mine||answerer||(mineRole&&G.phase==='picking'&&mySecret===null))?' mine':'');
 
-    // incoming question for the answerer
-    var showQ=amIt&&G.phase==='playing'&&!!pq;
+    // incoming question
+    var showQ=G.phase==='playing'&&!!answerer;
     show('incoming',showQ);
-    if(showQ){$('qfrom').textContent=pname(pq.from)+' asks:';$('qtext').textContent=pq.text}
+    if(showQ){$('qfrom').textContent=pname(pq.from)+' asks you:';$('qtext').textContent=pq.text}
 
     // round result
     show('roundPanel',G.phase==='roundover');
     if(G.phase==='roundover'&&G.result){
       var r=G.result;
-      $('roundTxt').textContent=!r.winner?'Round cancelled':(r.winner===net.id?'🎉 You win the round!':pname(r.winner)+' wins the round!');
+      $('roundTxt').textContent=!r.winner?'Round cancelled':(r.winner===net.id?'🎉 You win!':pname(r.winner)+' wins!');
       var d=r.note||'';
       if(r.secret!==null&&r.secret!==undefined)d+=' The person was '+G.names[r.secret]+'.';
+      if(classic){
+        var rv=G.order.filter(function(id){return G.revealed[id]!==undefined}).map(function(id){return pname(id)+': '+G.names[G.revealed[id]]});
+        if(rv.length)d+=' Secret people — '+rv.join(', ')+'.';
+      }
       if(!amHost())d+=' Waiting for '+pname(G.hostId)+' to start the next round…';
       $('roundDetail').textContent=d;
       show('nextRound',amHost());$('nextRound').disabled=online().length<2;
@@ -686,22 +838,26 @@ button:disabled{opacity:.4;cursor:default}
     G.log.slice().reverse().forEach(function(e){
       var li=document.createElement('li');
       if(e.sys){li.className='sys';li.textContent=e.sys;l.appendChild(li);return}
-      var b=document.createElement('b');b.textContent=(e.from===net.id?'You':pname(e.from))+': ';li.appendChild(b);
+      var who=(e.from===net.id?'You':pname(e.from))+(e.to?' → '+(e.to===net.id?'you':pname(e.to)):'');
+      var b=document.createElement('b');b.textContent=who+': ';li.appendChild(b);
       li.appendChild(document.createTextNode(e.q+' '));
-      if(e.a!==undefined){var s=document.createElement('span');s.className=e.a?'yes':'no';s.textContent=e.a?(e.guess?'Correct':'Yes'):(e.guess?'Wrong':'No');li.appendChild(s)}
+      if(e.a!==undefined){var s2=document.createElement('span');s2.className=e.a?'yes':'no';s2.textContent=e.a?(e.guess?'Correct':'Yes'):(e.guess?'Wrong':'No');li.appendChild(s2)}
       l.appendChild(li);
     });
 
-    // answerer: prompt to pick, and check final guesses automatically
-    if(amIt&&G.phase==='picking'&&mySecret===null&&pickPrompted!==G.round){
+    // automatic replies: prompt to pick, confirm the pick, check guesses against my person, reveal when out
+    if(mineRole&&G.phase==='picking'&&mySecret===null&&pickPrompted!==G.round){
       pickPrompted=G.round;fillList($('pickList'),setSecret);$('pickModal').classList.add('on');
     }
-    if(amIt&&G.phase==='picking'&&mySecret!==null&&!answered['picked'+G.round]){
+    if(mineRole&&G.phase==='picking'&&mySecret!==null&&!(classic&&G.ready[net.id])&&!answered['picked'+G.round]){
       answered['picked'+G.round]=1;setTimeout(function(){act({t:'picked'})},0);
     }
-    if(amIt&&pg&&mySecret!==null&&!answered[pg.n]){
+    if(pg&&pg.to===net.id&&mySecret!==null&&!answered[pg.n]){
       answered[pg.n]=1;
       setTimeout(function(){act({t:'gres',n:pg.n,correct:pg.i===mySecret,secret:mySecret})},0);
+    }
+    if(classic&&mySecret!==null&&G.revealed[net.id]===undefined&&(G.out[net.id]||G.phase==='roundover')&&!answered['rev'+G.round]){
+      answered['rev'+G.round]=1;setTimeout(function(){act({t:'reveal',i:mySecret})},0);
     }
     if(G.phase!=='playing')$('guessModal').classList.remove('on');
   }
