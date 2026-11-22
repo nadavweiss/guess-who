@@ -4,17 +4,17 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Guess Who</title>
-<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js"></script>
 <style>
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;background:#16213e;color:#fff;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
 body{min-height:100vh;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
-.wrap{max-width:900px;margin:0 auto;padding:14px}
+.wrap{max-width:900px;margin:0 auto;padding:8px}
 h1{margin:6px 0 4px;font-size:28px;text-align:center}
 h2{margin:0 0 8px;font-size:20px;text-align:center}
-.sub{text-align:center;color:#a9b4d0;margin:0 0 16px;font-size:14px}
-textarea{width:100%;min-height:220px;border-radius:12px;border:2px solid #34456f;background:#0f1730;color:#fff;font-size:17px;padding:12px;line-height:1.5;resize:vertical}
-input{font:inherit;min-width:0;padding:12px;border-radius:12px;border:2px solid #34456f;background:#0f1730;color:#fff}
+.sub{text-align:center;color:#a9b4d0;margin:0 0 12px;font-size:14px}
+textarea{width:100%;min-height:180px;border-radius:12px;border:2px solid #34456f;background:#16213e;color:#fff;font-size:17px;padding:12px;line-height:1.5;resize:vertical}
+input{font:inherit;min-width:0;width:100%;padding:12px;border-radius:12px;border:2px solid #34456f;background:#16213e;color:#fff}
 input:disabled{opacity:.5}
 button{font:inherit;border:0;border-radius:12px;padding:12px 16px;font-weight:600;cursor:pointer;color:#fff;background:#3b5bdb}
 button.alt{background:#2a3a66}
@@ -28,7 +28,7 @@ button:disabled{opacity:.4;cursor:default}
 .ask{display:flex;gap:8px;margin-top:10px}
 .ask input{flex:1}
 .or{text-align:center;color:#a9b4d0;font-size:13px;margin:14px 0 0}
-.code{font-size:40px;font-weight:800;letter-spacing:6px;text-align:center;margin:10px 0 0;color:#e8a317}
+.codeInline{color:#e8a317;letter-spacing:4px}
 .bar{position:sticky;top:0;z-index:5;background:#16213e;padding:8px 0 10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .bar button{padding:10px 12px;font-size:14px}
 .secret{flex:1;min-width:150px;background:#0f1730;border:2px dashed #e8a317;border-radius:12px;padding:10px;text-align:center;font-weight:700;user-select:none;-webkit-user-select:none;touch-action:none}
@@ -37,32 +37,37 @@ button:disabled{opacity:.4;cursor:default}
 .status.mine{border-color:#e8a317;color:#ffd36b}
 .incoming{background:#2a3a66;border:2px solid #e8a317;border-radius:12px;padding:12px;margin-top:10px;text-align:center}
 .incoming .qtext{font-size:20px;font-weight:700;margin:6px 0 2px;word-break:break-word}
-.meta{color:#a9b4d0;font-size:13px;text-align:center;margin:8px 0}
+.players{list-style:none;margin:0 0 10px;padding:0;display:flex;flex-wrap:wrap;gap:6px}
+.players li{background:#0f1730;border:2px solid #34456f;border-radius:999px;padding:6px 12px;font-size:14px;display:flex;gap:6px;align-items:center}
+.players li.turn{border-color:#e8a317}
+.players li.it{border-color:#7c9cff}
+.players li.off{opacity:.45}
+.players .score{background:#2a3a66;border-radius:999px;padding:1px 8px;font-weight:700}
+.players .tag{color:#a9b4d0;font-size:12px}
+.lobbyList li{font-size:17px;padding:10px 16px}
 .log{list-style:none;margin:12px 0 0;padding:0;display:flex;flex-direction:column;gap:6px}
 .log li{background:#0f1730;border-radius:10px;padding:8px 10px;font-size:14px;word-break:break-word}
+.log li.sys{background:none;color:#a9b4d0;font-size:13px;padding:2px 10px}
 .log .yes{color:#5fd38d;font-weight:700}
 .log .no{color:#ff7b8f;font-weight:700}
 .grid{display:grid;grid-template-columns:repeat(5,1fr);gap:5px;margin-top:10px}
 .card{perspective:600px;aspect-ratio:3/4;cursor:pointer}
-.init{font-size:24px!important;margin-top:4px!important}
-.nm{font-size:9px!important;padding:3px 1px!important;width:96%!important;border-radius:5px!important}
-.face{border-radius:8px!important;padding:5px 2px!important}
-.front{border-width:2px!important}
-.wrap{padding:8px}
-@media(min-width:560px){.init{font-size:44px!important}.nm{font-size:13px!important}.grid{gap:10px}}
+.card.mine .front{border-color:#e8a317!important;box-shadow:0 0 0 3px #e8a317}
+@media(min-width:560px){.grid{gap:10px}}
 .in{position:relative;width:100%;height:100%;transition:transform .45s;transform-style:preserve-3d}
 .card.down .in{transform:rotateX(180deg)}
-.face{position:absolute;inset:0;backface-visibility:hidden;-webkit-backface-visibility:hidden;border-radius:12px;display:flex;flex-direction:column;align-items:center;justify-content:space-between;padding:8px 4px;overflow:hidden}
-.front{border:3px solid rgba(255,255,255,.85)}
-.init{font-size:44px;font-weight:800;margin-top:10px;text-shadow:0 2px 6px rgba(0,0,0,.25)}
-.nm{background:rgba(255,255,255,.95);color:#111;width:94%;border-radius:8px;text-align:center;font-weight:700;font-size:13px;padding:5px 2px;word-break:break-word;line-height:1.15}
+.face{position:absolute;inset:0;backface-visibility:hidden;-webkit-backface-visibility:hidden;border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:space-between;padding:5px 2px;overflow:hidden}
+.front{border:2px solid rgba(255,255,255,.85)}
+.init{font-size:24px;font-weight:800;margin-top:4px;text-shadow:0 2px 6px rgba(0,0,0,.25)}
+.nm{background:rgba(255,255,255,.95);color:#111;width:96%;border-radius:5px;text-align:center;font-weight:700;font-size:9px;padding:3px 1px;word-break:break-word;line-height:1.15}
+@media(min-width:560px){.init{font-size:44px;margin-top:10px}.nm{font-size:13px;padding:5px 2px;border-radius:8px}.face{border-radius:12px;padding:8px 4px}.front{border-width:3px}}
 .back{background:#0b1226;border:3px solid #34456f;transform:rotateX(180deg);justify-content:center;color:#34456f;font-size:30px}
 .modal{position:fixed;inset:0;background:rgba(5,9,22,.92);z-index:20;display:none;overflow:auto;padding:16px}
 .modal.on{display:block}
 .modal .box{max-width:600px;margin:0 auto}
 .pick{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:12px}
 .pick button{background:#2a3a66;text-align:center;padding:14px 6px;font-size:16px}
-.big{font-size:40px;font-weight:800;text-align:center;margin:24px 0}
+.big{font-size:34px;font-weight:800;text-align:center;margin:10px 0}
 .center{text-align:center}
 .tip{color:#a9b4d0;font-size:13px;text-align:center;margin-top:14px}
 </style>
@@ -72,34 +77,37 @@ button:disabled{opacity:.4;cursor:default}
 
 <div id="setup">
   <h1>Guess Who?</h1>
-  <p class="sub">Paste your names, one per line. When you play online, your friend gets this list automatically.</p>
-  <textarea id="names" placeholder="Yaron&#10;Dotan&#10;Moshe&#10;David&#10;..."></textarea>
-  <div class="count" id="count"></div>
-  <div class="row">
-    <button id="onlineBtn" class="gold">Play online</button>
-    <button id="start">Play together on this phone</button>
-  </div>
-  <div class="row"><button id="demo" class="alt">Try sample names</button></div>
-
-  <div id="lobby" class="panel" style="display:none">
+  <div class="panel">
     <h2>Play online</h2>
-    <div id="lobbyChoose">
-      <div class="row"><button id="createBtn" class="gold">Create a game</button></div>
-      <p class="or">or join a friend's game</p>
-      <form class="ask" id="joinForm"><input id="joinCode" placeholder="Game code" maxlength="8" autocomplete="off" autocapitalize="characters"><button id="joinBtn">Join</button></form>
-    </div>
-    <div id="hostInfo" style="display:none">
-      <p class="sub" style="margin:0">Send this code or link to your friend</p>
-      <div class="code" id="codeTxt"></div>
-      <div class="row"><button id="shareBtn" class="alt">Copy invite link</button><button id="cancelHost" class="alt">Cancel</button></div>
-    </div>
+    <p class="sub">Any number of players, on any Wi-Fi or mobile network.</p>
+    <input id="myName" placeholder="Your name" maxlength="20" autocomplete="nickname">
+    <div class="row"><button id="createBtn" class="gold">Create a game</button></div>
+    <p class="or">or join a game</p>
+    <form class="ask" id="joinForm"><input id="joinCode" placeholder="Game code" maxlength="8" autocomplete="off" autocapitalize="characters"><button id="joinBtn">Join</button></form>
     <p class="tip" id="netStatus"></p>
   </div>
+  <div class="panel">
+    <h2>Cards</h2>
+    <p class="sub">One name per line. If you create the game, everyone plays with this list.</p>
+    <textarea id="names" placeholder="Yaron&#10;Dotan&#10;Moshe&#10;David&#10;..."></textarea>
+    <div class="count" id="count"></div>
+    <div class="row"><button id="demo" class="alt">Try sample names</button><button id="start">Play 2 players on this phone</button></div>
+  </div>
+</div>
+
+<div id="lobby" style="display:none">
+  <h1>Game <span class="codeInline" id="lobbyCode"></span></h1>
+  <p class="sub">Share the code or link. Everyone joins with their name.</p>
+  <div class="row"><button id="shareBtn" class="gold">Share invite link</button></div>
+  <div class="panel"><h2>Players</h2><ul class="players lobbyList" id="lobbyPlayers"></ul></div>
+  <div class="row"><button id="startOnline" class="gold">Start game</button></div>
+  <p class="tip" id="lobbyTip"></p>
+  <div class="row"><button id="leaveLobby" class="alt">Leave</button></div>
 </div>
 
 <div id="game" style="display:none">
   <div class="bar">
-    <div class="secret" id="secret"><small>Your person (hold to peek)</small><span id="secretTxt">Not chosen</span></div>
+    <div class="secret" id="secret"><small id="secretLbl">Your person (hold to peek)</small><span id="secretTxt">Not chosen</span></div>
     <button id="pickBtn" class="alt">Pick mine</button>
     <button id="guessBtn" class="gold">Final guess</button>
     <button id="resetBtn" class="alt">Flip all up</button>
@@ -107,14 +115,19 @@ button:disabled{opacity:.4;cursor:default}
   </div>
 
   <div id="online" style="display:none">
+    <ul class="players" id="players"></ul>
     <div class="status" id="status"></div>
     <div class="incoming" id="incoming" style="display:none">
-      <div>Your opponent asks:</div>
+      <div id="qfrom"></div>
       <div class="qtext" id="qtext"></div>
       <div class="row"><button id="yesBtn" class="gold">Yes</button><button id="noBtn" class="red">No</button></div>
     </div>
+    <div class="panel" id="roundPanel" style="display:none">
+      <div class="big" id="roundTxt"></div>
+      <p class="sub" id="roundDetail"></p>
+      <div class="row"><button id="nextRound" class="gold">Next round</button></div>
+    </div>
     <form class="ask" id="askForm"><input id="askInput" placeholder="Ask a yes/no question…" maxlength="140" autocomplete="off"><button id="askBtn">Ask</button></form>
-    <div class="meta"><span id="oppInfo"></span> · Game <b id="roomCode"></b></div>
   </div>
 
   <div class="grid" id="grid"></div>
@@ -126,7 +139,7 @@ button:disabled{opacity:.4;cursor:default}
 
 <div class="modal" id="pickModal"><div class="box">
   <h2 class="center">Choose your secret person</h2>
-  <p class="sub">Make sure your opponent is not looking.</p>
+  <p class="sub">Make sure nobody is looking.</p>
   <div class="row"><button id="randBtn" class="gold">Random for me</button><button id="pickClose" class="alt">Cancel</button></div>
   <div class="pick" id="pickList"></div>
 </div></div>
@@ -134,7 +147,7 @@ button:disabled{opacity:.4;cursor:default}
 <div class="modal" id="guessModal"><div class="box">
   <h2 class="center" id="guessTitle">Who is it?</h2>
   <div id="guessStep1">
-    <p class="sub">Tap your final answer. A wrong guess loses.</p>
+    <p class="sub">Tap your final answer. A wrong guess knocks you out.</p>
     <div class="pick" id="guessList"></div>
     <div class="row"><button id="guessClose" class="alt">Cancel</button></div>
   </div>
@@ -146,7 +159,6 @@ button:disabled{opacity:.4;cursor:default}
   </div>
   <div id="guessStep3" style="display:none">
     <div class="big" id="resultTxt"></div>
-    <p class="sub" id="resultDetail"></p>
     <div class="row"><button id="againBtn" class="gold">Play again</button><button id="resultClose" class="alt">See board</button></div>
   </div>
 </div></div>
@@ -154,16 +166,20 @@ button:disabled{opacity:.4;cursor:default}
 <script>
 (function(){
   var $=function(id){return document.getElementById(id)};
+  function show(id,on){$(id).style.display=on?'':'none'}
   var names=[], down={}, secret=null, chosen=null;
   var mode='local';
 
   // Filled in at deploy time from the NAMES repository secret (see .github/workflows/deploy.yml).
   var DEFAULTS=/*__NAMES__*/[];
+  function lsGet(k){try{return localStorage.getItem(k)}catch(e){return null}}
+  function lsSet(k,v){try{localStorage.setItem(k,v)}catch(e){}}
+  function ssGet(k){try{return sessionStorage.getItem(k)}catch(e){return null}}
+  function ssSet(k,v){try{sessionStorage.setItem(k,v)}catch(e){}}
   function load(){
-    var saved='';try{saved=localStorage.getItem('gw_names')||''}catch(e){}
-    $('names').value=DEFAULTS.length?DEFAULTS.join('\n'):saved;
+    $('names').value=DEFAULTS.length?DEFAULTS.join('\n'):(lsGet('gw_names')||'');
+    $('myName').value=lsGet('gw_name')||'';
   }
-  function save(){try{localStorage.setItem('gw_names',$('names').value)}catch(e){}}
   function parse(){
     var seen={},out=[];
     $('names').value.split(/\r?\n|,/).forEach(function(n){
@@ -171,52 +187,36 @@ button:disabled{opacity:.4;cursor:default}
     });
     return out;
   }
-  function upd(){var n=parse();$('count').textContent=n.length+' names';$('start').disabled=n.length<4;$('createBtn').disabled=n.length<4;save()}
+  function upd(){var n=parse();$('count').textContent=n.length+' names';$('start').disabled=n.length<4;lsSet('gw_names',$('names').value)}
   $('names').addEventListener('input',upd);
+  $('myName').addEventListener('input',function(){lsSet('gw_name',$('myName').value.trim())});
   $('demo').onclick=function(){
     $('names').value=['Yaron','Dotan','Moshe','David','Avi','Eli','Yossi','Shmuel','Noam','Ariel','Gil','Itai','Ben','Uri','Tal','Omer','Lior','Amit','Daniel','Josh','Max','Sam','Jake','Zev'].join('\n');upd();
   };
 
   function hue(s){var h=0;for(var i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))%360;return h}
-  function esc(s){return s.replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+  function esc(s){return String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
   function downCount(){var n=0;for(var k in down)if(down[k])n++;return n}
 
   function render(){
     var g=$('grid');g.innerHTML='';
+    var mineIdx=(mode==='online'&&G&&G.itId===net.id)?mySecret:null;
     names.forEach(function(n,i){
       var h=hue(n);
       var d=document.createElement('div');
-      d.className='card'+(down[i]?' down':'');
+      d.className='card'+(down[i]?' down':'')+(mineIdx===i?' mine':'');
       d.innerHTML='<div class="in"><div class="face front" style="background:linear-gradient(160deg,hsl('+h+',65%,55%),hsl('+((h+40)%360)+',65%,38%))"><div class="init">'+esc(n.charAt(0).toUpperCase())+'</div><div class="nm">'+esc(n)+'</div></div><div class="face back">✕</div></div>';
-      d.onclick=function(){down[i]=!down[i];d.classList.toggle('down',!!down[i]);if(mode==='online')send({t:'down',n:downCount()})};
+      d.onclick=function(){
+        down[i]=!down[i];d.classList.toggle('down',!!down[i]);
+        if(mode==='online')act({t:'down',n:downCount()});
+      };
       g.appendChild(d);
     });
   }
 
-  function showGame(){
-    $('setup').style.display='none';$('game').style.display='block';
-    $('pickModal').classList.remove('on');$('guessModal').classList.remove('on');
-    render();window.scrollTo(0,0);
+  function screen(which){
+    show('setup',which==='setup');show('lobby',which==='lobby');show('game',which==='game');
   }
-  function resetBoard(){down={};secret=null;$('secretTxt').textContent='Not chosen'}
-
-  // ---------- local (same phone) ----------
-  function startGame(){
-    names=parse();if(names.length<4)return;
-    mode='local';resetBoard();
-    $('online').style.display='none';$('log').innerHTML='';
-    $('gameTip').textContent='Tap a name to flip it down or back up. Ask yes/no questions out loud.';
-    $('editBtn').textContent='Names';$('guessBtn').textContent='Final guess';
-    ['pickBtn','guessBtn'].forEach(function(id){$(id).disabled=false});
-    showGame();
-  }
-  $('start').onclick=startGame;
-  $('editBtn').onclick=function(){
-    if(mode==='online'){if(confirm('Leave this game?'))leave();return}
-    $('game').style.display='none';$('setup').style.display='block';
-  };
-  $('resetBtn').onclick=function(){down={};render();if(mode==='online')send({t:'down',n:0})};
-
   function fillList(el,fn){
     el.innerHTML='';
     names.forEach(function(n,i){
@@ -224,230 +224,495 @@ button:disabled{opacity:.4;cursor:default}
     });
   }
 
-  // secret
+  // ---------- local: 2 players on one phone ----------
+  function startGame(){
+    names=parse();if(names.length<4)return;
+    mode='local';down={};secret=null;$('secretTxt').textContent='Not chosen';$('secretLbl').textContent='Your person (hold to peek)';
+    show('online',false);$('log').innerHTML='';
+    $('gameTip').textContent='Tap a name to flip it down or back up. Ask yes/no questions out loud.';
+    $('editBtn').textContent='Names';
+    ['pickBtn','guessBtn','resetBtn'].forEach(function(id){show(id,true);$(id).disabled=false});
+    screen('game');render();window.scrollTo(0,0);
+  }
+  $('start').onclick=startGame;
+  $('editBtn').onclick=function(){
+    if(mode==='online'){if(confirm('Leave this game?'))leaveRoom();return}
+    screen('setup');
+  };
+  $('resetBtn').onclick=function(){down={};render();if(mode==='online')act({t:'down',n:0})};
+
   function setSecret(i){
-    secret=i;$('secretTxt').textContent='••••••';$('pickModal').classList.remove('on');
-    if(mode==='online'&&!S.myReady){S.myReady=true;send({t:'ready'});updateUI()}
+    $('pickModal').classList.remove('on');
+    if(mode==='online'){
+      if(!G||G.itId!==net.id||G.phase!=='picking')return;
+      mySecret=i;ssSet(secretKey(),String(i));render();renderOnline();return;
+    }
+    secret=i;$('secretTxt').textContent='••••••';
   }
   $('pickBtn').onclick=function(){fillList($('pickList'),setSecret);$('pickModal').classList.add('on')};
   $('pickClose').onclick=function(){$('pickModal').classList.remove('on')};
   $('randBtn').onclick=function(){setSecret(Math.floor(Math.random()*names.length))};
   var sec=$('secret');
   function peek(on){
-    if(secret===null)return;
-    $('secretTxt').textContent=on?names[secret]:'••••••';
+    var s=mode==='online'?(G&&G.itId===net.id?mySecret:null):secret;
+    if(s===null||s===undefined)return;
+    $('secretTxt').textContent=on?names[s]:'••••••';
   }
-  ['pointerdown'].forEach(function(e){sec.addEventListener(e,function(ev){ev.preventDefault();peek(true)})});
+  sec.addEventListener('pointerdown',function(ev){ev.preventDefault();peek(true)});
   ['pointerup','pointerleave','pointercancel'].forEach(function(e){sec.addEventListener(e,function(){peek(false)})});
   sec.addEventListener('contextmenu',function(e){e.preventDefault()});
 
-  // guess
   function step(n){['guessStep1','guessStep2','guessStep3'].forEach(function(id,i){$(id).style.display=(i===n-1)?'block':'none'})}
   $('guessBtn').onclick=function(){
-    if(mode==='online'&&S.over){step(3);$('guessModal').classList.add('on');return}
     fillList($('guessList'),function(i){
-      if(mode==='online'){onlineGuess(i);return}
+      if(mode==='online'){$('guessModal').classList.remove('on');if(myTurn())act({t:'guess',i:i});return}
       chosen=i;$('guessName').textContent=names[i];step(2);
     });
     $('guessTitle').textContent='Who is it?';step(1);$('guessModal').classList.add('on');
   };
   $('guessClose').onclick=function(){$('guessModal').classList.remove('on')};
   $('guessBack').onclick=function(){step(1)};
-  function showResult(win,detail){
-    $('guessTitle').textContent='Result';
-    $('resultTxt').textContent=win?'🎉 You win!':'😬 You lose';
-    $('resultDetail').textContent=detail||'';
-    step(3);$('guessModal').classList.add('on');
-  }
-  $('winBtn').onclick=function(){showResult(true)};
-  $('loseBtn').onclick=function(){showResult(false)};
+  function localResult(win){$('guessTitle').textContent='Result';$('resultTxt').textContent=win?'🎉 You win!':'😬 You lose';step(3)}
+  $('winBtn').onclick=function(){localResult(true)};
+  $('loseBtn').onclick=function(){localResult(false)};
   $('resultClose').onclick=function(){$('guessModal').classList.remove('on')};
-  $('againBtn').onclick=function(){
-    if(mode==='online'){if(!conn)return;send({t:'rematch'});rematch();return}
-    $('guessModal').classList.remove('on');startGame();
-  };
+  $('againBtn').onclick=function(){$('guessModal').classList.remove('on');startGame()};
 
-  // ---------- online (peer-to-peer via PeerJS) ----------
-  var peer=null, conn=null, isHost=false, gameCode='', firstMe=true, S={};
-  var PREFIX='guesswho-room-';
+  // ---------- online: rooms through a public relay server (MQTT over secure websockets) ----------
+  // Every message is encrypted with a key derived from the game code, so the relay only sees ciphertext.
+  var BROKERS=['wss://broker.emqx.io:8084/mqtt','wss://test.mosquitto.org:8081','wss://broker.hivemq.com:8884/mqtt'];
+  var net={client:null,key:null,topic:'',code:'',broker:0,id:'',name:'',seen:{},joined:false};
+  var G=null, mySecret=null, shownRound=-1, answered={}, pickPrompted=-1;
+  var enc=new TextEncoder(), dec=new TextDecoder();
+
   function netStatus(t){$('netStatus').textContent=t||''}
-  function genCode(){var a='ABCDEFGHJKMNPQRSTUVWXYZ23456789',s='';for(var i=0;i<5;i++)s+=a.charAt(Math.floor(Math.random()*a.length));return s}
+  function rid(n){var a='abcdefghijkmnpqrstuvwxyz23456789',s='';var r=crypto.getRandomValues(new Uint8Array(n||10));for(var i=0;i<r.length;i++)s+=a.charAt(r[i]%a.length);return s}
+  function genCode(){var a='ABCDEFGHJKMNPQRSTUVWXYZ23456789',s='';var r=crypto.getRandomValues(new Uint8Array(6));for(var i=0;i<6;i++)s+=a.charAt(r[i]%a.length);return s}
   function cleanCode(s){return (s||'').toUpperCase().replace(/[^A-Z0-9]/g,'')}
-  function send(o){if(conn&&conn.open)conn.send(o)}
-  function resetOnline(meFirst){S={myReady:false,oppReady:false,turn:meFirst?'me':'opp',awaiting:false,pendingQ:null,over:false,oppDown:0,log:[]}}
-  function lobbyChoose(){ $('lobbyChoose').style.display='block';$('hostInfo').style.display='none' }
-  function destroyPeer(){try{if(conn)conn.close()}catch(e){}try{if(peer)peer.destroy()}catch(e){}conn=null;peer=null}
+  function b64(u){var s='';for(var i=0;i<u.length;i++)s+=String.fromCharCode(u[i]);return btoa(s)}
+  function unb64(s){var b=atob(s),u=new Uint8Array(b.length);for(var i=0;i<b.length;i++)u[i]=b.charCodeAt(i);return u}
 
-  $('onlineBtn').onclick=function(){var l=$('lobby');l.style.display=l.style.display==='none'?'block':'none';if(l.style.display==='block')l.scrollIntoView({behavior:'smooth'})};
-
-  function createGame(){
-    if(typeof Peer==='undefined'){netStatus('Could not load the online library. Check your connection and reload.');return}
-    if(parse().length<4){netStatus('Add at least 4 names first.');return}
-    destroyPeer();isHost=true;gameCode=genCode();
-    netStatus('Creating game…');
-    peer=new Peer(PREFIX+gameCode);
-    peer.on('open',function(){
-      $('lobbyChoose').style.display='none';$('hostInfo').style.display='block';
-      $('codeTxt').textContent=gameCode;netStatus('Waiting for your friend to join…');
-    });
-    peer.on('connection',function(c){
-      if(conn){c.on('open',function(){c.close()});return}
-      setupConn(c);
-    });
-    peer.on('error',function(e){
-      if(e.type==='unavailable-id'){createGame();return}
-      netStatus('Connection problem ('+e.type+'). Try again.');
+  function deriveRoom(code){
+    return crypto.subtle.importKey('raw',enc.encode(code),'PBKDF2',false,['deriveKey']).then(function(base){
+      return Promise.all([
+        crypto.subtle.deriveKey({name:'PBKDF2',salt:enc.encode('guess-who-room-v1'),iterations:100000,hash:'SHA-256'},base,{name:'AES-GCM',length:256},false,['encrypt','decrypt']),
+        crypto.subtle.digest('SHA-256',enc.encode('topic:'+code))
+      ]);
+    }).then(function(r){
+      var h=new Uint8Array(r[1]),hex='';for(var i=0;i<12;i++)hex+=('0'+h[i].toString(16)).slice(-2);
+      return {key:r[0],topic:'gwho/v1/'+hex};
     });
   }
-  function joinGame(code){
+  function seal(obj){
+    var iv=crypto.getRandomValues(new Uint8Array(12));
+    return crypto.subtle.encrypt({name:'AES-GCM',iv:iv},net.key,enc.encode(JSON.stringify(obj))).then(function(ct){
+      var out=new Uint8Array(12+ct.byteLength);out.set(iv);out.set(new Uint8Array(ct),12);return b64(out);
+    });
+  }
+  function unseal(str){
+    var u=unb64(str);
+    return crypto.subtle.decrypt({name:'AES-GCM',iv:u.slice(0,12)},net.key,u.slice(12)).then(function(pt){return JSON.parse(dec.decode(pt))});
+  }
+  function pub(sub,obj,retain){
+    var c=net.client;if(!c)return;
+    seal(obj).then(function(p){c.publish(net.topic+sub,p,{qos:1,retain:!!retain})});
+  }
+
+  function connectTo(i){
+    return seal({t:'leave',from:net.id,mid:rid()}).then(function(will){
+      return new Promise(function(res,rej){
+        var c=mqtt.connect(BROKERS[i],{keepalive:20,reconnectPeriod:3000,connectTimeout:7000,clean:true,
+          will:{topic:net.topic+'/m',payload:will,qos:1,retain:false}});
+        var done=false;
+        c.on('connect',function(){
+          c.subscribe([net.topic+'/s',net.topic+'/m'],{qos:1});
+          if(!done){done=true;res(c)}
+          else if(net.joined)act({t:'join',name:net.name});
+        });
+        c.on('message',function(topic,payload){
+          var s=payload&&payload.toString();if(!s)return;
+          unseal(s).then(function(m){
+            if(topic===net.topic+'/s')onState(m);else onIntent(m);
+          },function(){});
+        });
+        c.on('error',function(){});
+        setTimeout(function(){if(!done){done=true;try{c.end(true)}catch(e){}rej(new Error('timeout'))}},8000);
+      });
+    });
+  }
+
+  function myName(){
+    var n=$('myName').value.trim().slice(0,20);
+    if(!n){netStatus('Enter your name first.');$('myName').focus();return null}
+    lsSet('gw_name',n);return n;
+  }
+  function busy(on){$('createBtn').disabled=on;$('joinBtn').disabled=on}
+
+  function createRoom(){
+    if(typeof mqtt==='undefined'){netStatus('Could not load the online library. Check your connection and reload.');return}
+    var nm=myName();if(!nm)return;
+    var cards=parse();if(cards.length<4){netStatus('Add at least 4 names to the card list first.');return}
+    busy(true);netStatus('Creating game…');
+    var code=genCode();
+    setupRoom(code,nm).then(function(){
+      return tryBrokers([0,1,2],function(){return Promise.resolve(true)});
+    }).then(function(ok){
+      busy(false);
+      if(!ok){netStatus('Could not reach the game server. Check your connection and try again.');return}
+      G={v:1,hostId:net.id,phase:'lobby',round:0,names:cards,players:[{id:net.id,name:nm,score:0,on:true,down:0}],
+         itId:null,order:[],turn:0,out:{},pendingQ:null,pendingGuess:null,log:[],result:null};
+      net.joined=true;publishState();enterRoom();
+    });
+  }
+  function joinRoom(code){
     code=cleanCode(code);
-    if(!code){netStatus('Enter the game code.');return}
-    if(typeof Peer==='undefined'){netStatus('Could not load the online library. Check your connection and reload.');return}
-    destroyPeer();isHost=false;gameCode=code;
-    netStatus('Joining game '+code+'…');
-    peer=new Peer();
-    peer.on('open',function(){setupConn(peer.connect(PREFIX+code,{reliable:true}))});
-    peer.on('error',function(e){
-      netStatus(e.type==='peer-unavailable'?'No game found with code '+code+'. Check the code and try again.':'Connection problem ('+e.type+'). Try again.');
+    if(code.length<4){netStatus('Enter the game code.');return}
+    if(typeof mqtt==='undefined'){netStatus('Could not load the online library. Check your connection and reload.');return}
+    var nm=myName();if(!nm)return;
+    busy(true);netStatus('Looking for game '+code+'…');
+    var hint=parseInt(new URLSearchParams(location.search).get('b'),10);
+    var order=[0,1,2];if(hint>=0&&hint<3){order.splice(order.indexOf(hint),1);order.unshift(hint)}
+    setupRoom(code,nm).then(function(){
+      return tryBrokers(order,function(){return waitFor(function(){return !!G},4000)});
+    }).then(function(ok){
+      if(!ok){busy(false);netStatus('No game found with code '+code+'. Check the code and try again.');closeNet();return}
+      net.joined=true;act({t:'join',name:nm});
+      return waitFor(function(){return !!findP(net.id)},8000).then(function(inRoom){
+        busy(false);
+        if(!inRoom){netStatus('That game is no longer running. Ask for a new code.');closeNet();return}
+        enterRoom();
+      });
     });
   }
-  function setupConn(c){
-    conn=c;
-    c.on('open',function(){
-      if(isHost){names=parse();send({t:'hello',names:names});startOnline(true)}
-    });
-    c.on('data',onMsg);
-    c.on('close',function(){
-      if(conn!==c)return;
-      conn=null;
-      if(mode==='online'){updateUI()}else{netStatus('Connection closed.')}
-    });
-    c.on('error',function(){netStatus('Connection problem. Try again.')});
+  function setupRoom(code,nm){
+    closeNet();G=null;mySecret=null;shownRound=-1;answered={};pickPrompted=-1;net.seen={};
+    net.code=code;net.name=nm;
+    net.id=ssGet('gw_id_'+code)||rid();ssSet('gw_id_'+code,net.id);
+    return deriveRoom(code).then(function(r){net.key=r.key;net.topic=r.topic});
   }
-  $('createBtn').onclick=createGame;
-  $('joinForm').onsubmit=function(e){e.preventDefault();joinGame($('joinCode').value)};
-  $('cancelHost').onclick=function(){destroyPeer();lobbyChoose();netStatus('')};
+  function tryBrokers(list,check){
+    var i=0;
+    function next(){
+      if(i>=list.length)return Promise.resolve(false);
+      var b=list[i++];
+      return connectTo(b).then(function(c){
+        net.client=c;net.broker=b;
+        return check().then(function(ok){if(ok)return true;closeNet();return next()});
+      },function(){return next()});
+    }
+    return next();
+  }
+  function waitFor(fn,ms){
+    return new Promise(function(res){
+      var t0=Date.now();(function loop(){if(fn())return res(true);if(Date.now()-t0>ms)return res(false);setTimeout(loop,150)})();
+    });
+  }
+  function closeNet(){if(net.client){try{net.client.end(true)}catch(e){}}net.client=null;net.joined=false}
+  function enterRoom(){
+    mode='online';netStatus('');
+    history.replaceState(null,'',location.pathname+'?room='+net.code+'&b='+net.broker);
+    renderOnline();
+  }
+  function leaveRoom(){
+    if(net.client&&net.joined){
+      var c=net.client;
+      seal({t:'leave',from:net.id,mid:rid()}).then(function(p){c.publish(net.topic+'/m',p,{qos:1},function(){try{c.end()}catch(e){}})});
+      net.client=null;net.joined=false;
+    }else closeNet();
+    G=null;mode='local';history.replaceState(null,'',location.pathname);
+    $('pickModal').classList.remove('on');$('guessModal').classList.remove('on');
+    screen('setup');
+  }
+  $('createBtn').onclick=createRoom;
+  $('joinForm').onsubmit=function(e){e.preventDefault();joinRoom($('joinCode').value)};
+  $('leaveLobby').onclick=leaveRoom;
   $('shareBtn').onclick=function(){
-    var url=location.origin+location.pathname+'?join='+gameCode;
-    if(navigator.share){navigator.share({title:'Guess Who?',text:'Join my Guess Who game: '+gameCode,url:url}).catch(function(){});return}
-    if(navigator.clipboard){navigator.clipboard.writeText(url).then(function(){netStatus('Invite link copied. Waiting for your friend to join…')},function(){netStatus(url)})}
-    else netStatus(url);
+    var url=location.origin+location.pathname+'?room='+net.code+'&b='+net.broker;
+    if(navigator.share){navigator.share({title:'Guess Who?',text:'Join my Guess Who game! Code: '+net.code,url:url}).catch(function(){});return}
+    if(navigator.clipboard){navigator.clipboard.writeText(url).then(function(){$('lobbyTip').textContent='Invite link copied.'},function(){$('lobbyTip').textContent=url})}
+    else $('lobbyTip').textContent=url;
   };
 
-  function startOnline(meFirst){
-    mode='online';firstMe=meFirst;resetBoard();resetOnline(meFirst);
-    $('online').style.display='block';$('roomCode').textContent=gameCode;
-    $('gameTip').textContent='Tap a name to flip it down. Your opponent only sees how many you have left.';
-    $('editBtn').textContent='Leave';
-    netStatus('');
-    showGame();updateUI();
-  }
-  function rematch(){
-    firstMe=!firstMe;resetBoard();resetOnline(firstMe);
-    $('guessModal').classList.remove('on');render();updateUI();
-  }
-  function leave(){
-    destroyPeer();mode='local';
-    $('game').style.display='none';$('setup').style.display='block';
-    lobbyChoose();netStatus('');
-    if(location.search)history.replaceState(null,'',location.pathname);
+  // ----- shared state helpers -----
+  function findP(id){if(!G)return null;for(var i=0;i<G.players.length;i++)if(G.players[i].id===id)return G.players[i];return null}
+  function pname(id){var p=findP(id);return p?p.name:'Someone'}
+  function amHost(){return !!G&&G.hostId===net.id}
+  function online(){return G.players.filter(function(p){return p.on})}
+  function secretKey(){return 'gw_secret_'+net.code+'_'+(G?G.round:0)}
+  function curTurn(){return G.order[G.turn]}
+  function myTurn(){
+    return mode==='online'&&!!G&&G.phase==='playing'&&curTurn()===net.id&&!G.pendingQ&&!G.pendingGuess&&!G.out[net.id];
   }
 
-  function lastEntry(me){for(var i=S.log.length-1;i>=0;i--)if(S.log[i].me===me&&S.log[i].a===undefined)return S.log[i];return null}
+  function act(m){
+    if(!G&&m.t!=='join')return;
+    m.from=net.id;m.mid=rid();
+    if(amHost()){net.seen[m.mid]=1;handle(m)}
+    else pub('/m',m);
+  }
+  function publishState(){pub('/s',G,true)}
 
-  function onMsg(m){
-    if(!m||typeof m!=='object')return;
-    switch(m.t){
-      case 'hello':
-        if(isHost||!Array.isArray(m.names))return;
-        names=m.names.slice(0,200).map(function(n){return String(n).slice(0,60)});
-        startOnline(false);break;
-      case 'ready':S.oppReady=true;break;
-      case 'down':S.oppDown=Math.max(0,Math.min(names.length,m.n|0));break;
-      case 'q':
-        if(S.over)return;
-        S.pendingQ=String(m.text||'').slice(0,140);S.log.push({me:false,q:S.pendingQ});break;
-      case 'a':
-        var e=lastEntry(true);if(e)e.a=!!m.yes;
-        S.awaiting=false;S.turn='opp';break;
-      case 'guess':
-        if(S.over)return;
-        var correct=(m.i===secret);
-        send({t:'guessResult',correct:correct,secret:secret});
-        S.log.push({me:false,q:'Final guess: '+names[m.i]+'?',a:correct});
-        S.over=true;
-        showResult(!correct,'They guessed '+names[m.i]+(correct?', which was right.':', which was wrong.'));
-        break;
-      case 'guessResult':
-        var g=lastEntry(true);if(g)g.a=!!m.correct;
-        S.awaiting=false;S.over=true;
-        send({t:'reveal',i:secret});
-        showResult(!!m.correct,(m.correct?'Correct! ':'Wrong. ')+'Their person was '+names[m.secret]+'.');
-        break;
-      case 'reveal':
-        $('resultDetail').textContent+=' Their person was '+names[m.i]+'.';break;
-      case 'rematch':
-        if(S.over)rematch();return;
+  function onState(m){
+    if(!m||typeof m.v!=='number')return;
+    if(G&&m.v<=G.v)return;
+    G=m;
+    if(mode==='online')renderOnline();
+  }
+  function onIntent(m){
+    if(!G||!m||!m.mid)return;
+    // "leave" can repeat (the server resends a dropped phone's goodbye each time), so it is not de-duplicated
+    if(m.t!=='leave'){if(net.seen[m.mid])return;net.seen[m.mid]=1}
+    if(m.t==='leave'&&m.from===G.hostId&&m.from!==net.id){
+      // the host left: the next connected player takes over running the game
+      var next=G.players.filter(function(p){return p.on&&p.id!==m.from})[0];
+      if(next&&next.id===net.id){G.hostId=net.id;handle(m)}
+      return;
     }
-    updateUI();
+    if(amHost())handle(m);
   }
 
+  // ----- game rules (run only by the host) -----
+  function sys(t){G.log.push({sys:t})}
+  function newRound(){
+    var on=online();
+    if(on.length<2){G.phase='lobby';return}
+    var ids=on.map(function(p){return p.id});
+    var prev=ids.indexOf(G.itId);
+    var it=ids[(prev+1)%ids.length];
+    G.round++;G.itId=it;
+    var k=ids.indexOf(it);
+    G.order=ids.slice(k+1).concat(ids.slice(0,k));
+    G.turn=0;G.out={};G.pendingQ=null;G.pendingGuess=null;G.result=null;G.log=[];
+    G.players.forEach(function(p){p.down=0});
+    G.phase='picking';
+    sys('Round '+G.round+': '+pname(it)+' is answering.');
+  }
+  function endRound(winner,note,secretIdx){
+    if(winner){var w=findP(winner);if(w)w.score++}
+    G.phase='roundover';G.pendingQ=null;G.pendingGuess=null;
+    G.result={winner:winner||null,note:note,secret:(typeof secretIdx==='number')?secretIdx:null};
+  }
+  function activeGuessers(){return G.order.filter(function(id){var p=findP(id);return p&&p.on&&!G.out[id]})}
+  function advance(){
+    if(!activeGuessers().length){endRound(G.itId,'Nobody guessed '+pname(G.itId)+"'s person.");return}
+    var n=G.order.length;
+    for(var s=1;s<=n;s++){
+      var j=(G.turn+s)%n,id=G.order[j],p=findP(id);
+      if(p&&p.on&&!G.out[id]){G.turn=j;return}
+    }
+  }
+  function handle(m){
+    var p=findP(m.from),from=m.from,ok=true;
+    switch(m.t){
+      case 'join':
+        var nm=String(m.name||'Player').slice(0,20);
+        if(!p){
+          if(G.players.length>=16){ok=false;break}
+          G.players.push({id:from,name:nm,score:0,on:true,down:0});
+          if(G.phase!=='lobby')sys(nm+' joined and will play from the next round.');
+        }else{p.on=true;p.name=nm}
+        break;
+      case 'leave':
+        if(!p||!p.on){ok=false;break}
+        if(G.phase==='lobby'){G.players=G.players.filter(function(x){return x.id!==from});break}
+        p.on=false;sys(p.name+' left.');
+        if(G.phase==='picking'||G.phase==='playing'){
+          if(online().length<2){endRound(null,'Not enough players left.');break}
+          if(from===G.itId){endRound(null,p.name+' left, so this round is cancelled.');break}
+          if(G.pendingQ&&G.pendingQ.from===from)G.pendingQ=null;
+          if(G.pendingGuess&&G.pendingGuess.from===from)G.pendingGuess=null;
+          if(G.phase==='playing'&&curTurn()===from)advance();
+          else if(G.phase==='playing'&&!activeGuessers().length)advance();
+        }
+        break;
+      case 'start':
+        if(from!==G.hostId||G.phase!=='lobby'||online().length<2){ok=false;break}
+        G.itId=null;newRound();break;
+      case 'next':
+        if(from!==G.hostId||G.phase!=='roundover'){ok=false;break}
+        newRound();break;
+      case 'picked':
+        if(G.phase!=='picking'||from!==G.itId){ok=false;break}
+        G.phase='playing';G.turn=0;
+        var first=G.order[0],fp=findP(first);
+        if(!fp||!fp.on){G.turn=G.order.length-1;advance()}
+        break;
+      case 'ask':
+        if(G.phase!=='playing'||curTurn()!==from||G.pendingQ||G.pendingGuess){ok=false;break}
+        var q=String(m.text||'').trim().slice(0,140);if(!q){ok=false;break}
+        G.pendingQ={from:from,text:q};G.log.push({from:from,q:q});
+        break;
+      case 'answer':
+        if(G.phase!=='playing'||from!==G.itId||!G.pendingQ){ok=false;break}
+        for(var i=G.log.length-1;i>=0;i--){if(G.log[i].from===G.pendingQ.from&&G.log[i].a===undefined&&!G.log[i].sys){G.log[i].a=!!m.yes;break}}
+        G.pendingQ=null;advance();
+        break;
+      case 'guess':
+        if(G.phase!=='playing'||curTurn()!==from||G.pendingQ||G.pendingGuess){ok=false;break}
+        var gi=m.i|0;if(gi<0||gi>=G.names.length){ok=false;break}
+        G.pendingGuess={from:from,i:gi,n:rid(6)};G.log.push({from:from,q:'Final guess: '+G.names[gi]+'?',guess:true});
+        break;
+      case 'gres':
+        if(G.phase!=='playing'||from!==G.itId||!G.pendingGuess||m.n!==G.pendingGuess.n){ok=false;break}
+        var gp=G.pendingGuess;G.pendingGuess=null;
+        for(var k=G.log.length-1;k>=0;k--){if(G.log[k].guess&&G.log[k].a===undefined){G.log[k].a=!!m.correct;break}}
+        if(m.correct){endRound(gp.from,pname(gp.from)+' guessed it.',m.secret)}
+        else{
+          G.out[gp.from]=true;sys(pname(gp.from)+' guessed wrong and is out this round.');
+          if(!activeGuessers().length)endRound(G.itId,'Nobody guessed '+pname(G.itId)+"'s person.",m.secret);
+          else advance();
+        }
+        break;
+      case 'down':
+        if(!p){ok=false;break}
+        p.down=Math.max(0,Math.min(G.names.length,m.n|0));break;
+      default:ok=false;
+    }
+    if(!ok)return;
+    if(G.log.length>80)G.log=G.log.slice(-80);
+    G.v++;publishState();
+    renderOnline();
+  }
+
+  // ----- online UI -----
+  $('startOnline').onclick=function(){act({t:'start'})};
+  $('nextRound').onclick=function(){act({t:'next'})};
   $('askForm').onsubmit=function(e){
     e.preventDefault();
     var q=$('askInput').value.trim();if(!q||!myTurn())return;
-    send({t:'q',text:q});S.awaiting=true;S.log.push({me:true,q:q});
-    $('askInput').value='';updateUI();
+    act({t:'ask',text:q});$('askInput').value='';
   };
-  function answer(yes){
-    if(S.pendingQ===null)return;
-    send({t:'a',yes:yes});
-    var e=lastEntry(false);if(e)e.a=yes;
-    S.pendingQ=null;S.turn='me';updateUI();
-  }
-  $('yesBtn').onclick=function(){answer(true)};
-  $('noBtn').onclick=function(){answer(false)};
+  $('yesBtn').onclick=function(){act({t:'answer',yes:true})};
+  $('noBtn').onclick=function(){act({t:'answer',yes:false})};
 
-  function onlineGuess(i){
-    $('guessModal').classList.remove('on');
-    if(!myTurn())return;
-    send({t:'guess',i:i});S.awaiting=true;S.log.push({me:true,q:'Final guess: '+names[i]+'?'});updateUI();
-  }
-
-  function myTurn(){return mode==='online'&&!!conn&&S.myReady&&S.oppReady&&!S.over&&S.turn==='me'&&!S.awaiting&&S.pendingQ===null}
-
-  function updateUI(){
-    if(mode!=='online')return;
-    var st;
-    if(!conn)st='Your opponent left the game.';
-    else if(S.over)st='Game over. Tap "Results" to play again.';
-    else if(!S.myReady)st='Tap "Pick mine" to choose your secret person.';
-    else if(!S.oppReady)st='Waiting for your opponent to pick their person…';
-    else if(S.pendingQ!==null)st='Answer your opponent\'s question.';
-    else if(S.turn==='me')st=S.awaiting?'Waiting for your opponent to answer…':'Your turn: ask a yes/no question or make a final guess.';
-    else st='Your opponent\'s turn…';
-    $('status').textContent=st;
-    var mine=myTurn();
-    $('status').className='status'+(mine?' mine':'');
-    $('askInput').disabled=!mine;$('askBtn').disabled=!mine;
-    $('guessBtn').textContent=S.over?'Results':'Final guess';
-    $('guessBtn').disabled=!(mine||(S.over&&conn));
-    $('pickBtn').disabled=S.myReady||!conn;
-    $('incoming').style.display=(S.pendingQ!==null&&!S.over&&conn)?'block':'none';
-    $('qtext').textContent=S.pendingQ||'';
-    $('oppInfo').textContent='Opponent has '+(names.length-S.oppDown)+' of '+names.length+' cards up';
-    var l=$('log');l.innerHTML='';
-    S.log.slice().reverse().forEach(function(e){
+  function playerChips(el,lobbyView){
+    el.innerHTML='';
+    G.players.forEach(function(p){
       var li=document.createElement('li');
-      var b=document.createElement('b');b.textContent=e.me?'You: ':'Them: ';li.appendChild(b);
-      li.appendChild(document.createTextNode(e.q+' '));
-      if(e.a!==undefined){var s=document.createElement('span');s.className=e.a?'yes':'no';s.textContent=e.a?'Yes':'No';li.appendChild(s)}
-      l.appendChild(li);
+      var cls=[];
+      if(!p.on)cls.push('off');
+      if(!lobbyView&&G.phase==='playing'&&curTurn()===p.id&&!G.out[p.id])cls.push('turn');
+      if(!lobbyView&&G.itId===p.id&&G.phase!=='lobby')cls.push('it');
+      li.className=cls.join(' ');
+      var n=document.createElement('b');n.textContent=p.name+(p.id===net.id?' (you)':'');li.appendChild(n);
+      var tags=[];
+      if(p.id===G.hostId)tags.push('host');
+      if(!p.on)tags.push('offline');
+      if(!lobbyView&&G.phase!=='lobby'){
+        if(G.itId===p.id)tags.push('answering');
+        else if(G.order.indexOf(p.id)<0)tags.push('next round');
+        else if(G.out[p.id])tags.push('out');
+        else if(G.phase==='playing'||G.phase==='picking')tags.push((G.names.length-(p.down||0))+' up');
+      }
+      if(tags.length){var t=document.createElement('span');t.className='tag';t.textContent=tags.join(' · ');li.appendChild(t)}
+      if(!lobbyView){var s=document.createElement('span');s.className='score';s.textContent=p.score;li.appendChild(s)}
+      el.appendChild(li);
     });
   }
 
+  function renderOnline(){
+    if(mode!=='online'||!G)return;
+    if(G.phase==='lobby'){
+      screen('lobby');
+      $('lobbyCode').textContent=net.code;
+      playerChips($('lobbyPlayers'),true);
+      var n=online().length;
+      show('startOnline',amHost());
+      $('startOnline').disabled=n<2;
+      $('lobbyTip').textContent=amHost()?(n<2?'Waiting for at least one more player…':n+' players ready. Start when everyone is in.'):'Waiting for '+pname(G.hostId)+' to start the game…';
+      return;
+    }
+    screen('game');show('online',true);
+    names=G.names;
+    var amIt=G.itId===net.id;
+    if(G.round!==shownRound){
+      shownRound=G.round;down={};answered={};
+      var saved=ssGet(secretKey());mySecret=(amIt&&saved!==null)?parseInt(saved,10):null;
+      render();window.scrollTo(0,0);
+    }
+    var itName=pname(G.itId);
+    $('editBtn').textContent='Leave';
+    show('resetBtn',!amIt);
+    // secret box / role
+    if(amIt){
+      $('secretLbl').textContent='Your person (hold to peek)';
+      $('secretTxt').textContent=mySecret===null?'Not chosen':'••••••';
+    }else{
+      $('secretLbl').textContent=G.order.indexOf(net.id)<0?'Watching this round':'You are guessing';
+      $('secretTxt').textContent=itName+"'s person";
+    }
+    show('pickBtn',amIt);$('pickBtn').disabled=!(G.phase==='picking'&&mySecret===null);
+    show('guessBtn',!amIt);
+    var mine=myTurn();
+    $('guessBtn').disabled=!mine;$('askInput').disabled=!mine;$('askBtn').disabled=!mine;
+    show('askForm',!amIt&&G.phase!=='roundover');
+    $('askInput').placeholder='Ask '+itName+' a yes/no question…';
+    $('gameTip').textContent=amIt?'You are answering this round. Your person is outlined in gold.':'Tap a name to flip it down. Everyone sees every question and answer.';
+
+    // status line
+    var st='',pg=G.pendingGuess,pq=G.pendingQ;
+    if(G.phase==='picking')st=amIt?'Pick your secret person.':'Waiting for '+itName+' to pick a person…';
+    else if(G.phase==='playing'){
+      if(pg)st=amIt?'Checking '+pname(pg.from)+"'s final guess…":(pg.from===net.id?'Checking your guess…':pname(pg.from)+' is making a final guess…');
+      else if(pq)st=amIt?'Answer '+pname(pq.from)+"'s question.":(pq.from===net.id?'Waiting for '+itName+' to answer…':pname(pq.from)+' asked '+itName+' a question…');
+      else if(mine)st='Your turn: ask '+itName+' a question or make a final guess.';
+      else st=(amIt?pname(curTurn())+' is asking…':pname(curTurn())+"'s turn…");
+      if(G.out[net.id])st="You're out this round. "+st;
+    }else if(G.phase==='roundover')st='Round over.';
+    $('status').textContent=st;
+    $('status').className='status'+((mine||(amIt&&pq)||(amIt&&G.phase==='picking'&&mySecret===null))?' mine':'');
+
+    // incoming question for the answerer
+    var showQ=amIt&&G.phase==='playing'&&!!pq;
+    show('incoming',showQ);
+    if(showQ){$('qfrom').textContent=pname(pq.from)+' asks:';$('qtext').textContent=pq.text}
+
+    // round result
+    show('roundPanel',G.phase==='roundover');
+    if(G.phase==='roundover'&&G.result){
+      var r=G.result;
+      $('roundTxt').textContent=!r.winner?'Round cancelled':(r.winner===net.id?'🎉 You win the round!':pname(r.winner)+' wins the round!');
+      var d=r.note||'';
+      if(r.secret!==null&&r.secret!==undefined)d+=' The person was '+G.names[r.secret]+'.';
+      if(!amHost())d+=' Waiting for '+pname(G.hostId)+' to start the next round…';
+      $('roundDetail').textContent=d;
+      show('nextRound',amHost());$('nextRound').disabled=online().length<2;
+      $('nextRound').textContent=online().length<2?'Waiting for players…':'Next round';
+    }
+    playerChips($('players'),false);
+
+    // log
+    var l=$('log');l.innerHTML='';
+    G.log.slice().reverse().forEach(function(e){
+      var li=document.createElement('li');
+      if(e.sys){li.className='sys';li.textContent=e.sys;l.appendChild(li);return}
+      var b=document.createElement('b');b.textContent=(e.from===net.id?'You':pname(e.from))+': ';li.appendChild(b);
+      li.appendChild(document.createTextNode(e.q+' '));
+      if(e.a!==undefined){var s=document.createElement('span');s.className=e.a?'yes':'no';s.textContent=e.a?(e.guess?'Correct':'Yes'):(e.guess?'Wrong':'No');li.appendChild(s)}
+      l.appendChild(li);
+    });
+
+    // answerer: prompt to pick, and check final guesses automatically
+    if(amIt&&G.phase==='picking'&&mySecret===null&&pickPrompted!==G.round){
+      pickPrompted=G.round;fillList($('pickList'),setSecret);$('pickModal').classList.add('on');
+    }
+    if(amIt&&G.phase==='picking'&&mySecret!==null&&!answered['picked'+G.round]){
+      answered['picked'+G.round]=1;setTimeout(function(){act({t:'picked'})},0);
+    }
+    if(amIt&&pg&&mySecret!==null&&!answered[pg.n]){
+      answered[pg.n]=1;
+      setTimeout(function(){act({t:'gres',n:pg.n,correct:pg.i===mySecret,secret:mySecret})},0);
+    }
+    if(G.phase!=='playing')$('guessModal').classList.remove('on');
+  }
+
   load();upd();
-  var j=new URLSearchParams(location.search).get('join');
-  if(j){$('lobby').style.display='block';$('joinCode').value=cleanCode(j);joinGame(j)}
+  var qs=new URLSearchParams(location.search),room=qs.get('room');
+  if(room){
+    $('joinCode').value=cleanCode(room);
+    if($('myName').value.trim())joinRoom(room);
+    else{netStatus('Enter your name, then tap Join.');$('myName').focus()}
+  }
 })();
 </script>
 </body>
